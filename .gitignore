@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+*.log
+whisper-cpp/
+src/assets/whisper-models/

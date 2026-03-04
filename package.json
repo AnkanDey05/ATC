@@ -1,0 +1,52 @@
+{
+  "name": "msfs-atc",
+  "version": "1.0.0",
+  "description": "AI-driven Air Traffic Control for Microsoft Flight Simulator 2020/2024",
+  "main": "src/main/main.js",
+  "scripts": {
+    "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "build": "vite build && electron-builder",
+    "package": "vite build && electron-builder --win",
+    "vite:dev": "vite",
+    "electron:dev": "electron ."
+  },
+  "dependencies": {
+    "edge-tts-universal": "^1.4.0",
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.3.0",
+    "groq-sdk": "^0.37.0",
+    "node-simconnect": "^4.0.0",
+    "openai": "^4.73.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.0",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.0",
+    "postcss": "^8.4.49",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.0",
+    "vite": "^6.0.0",
+    "wait-on": "^8.0.0"
+  },
+  "build": {
+    "appId": "com.msfs.atc",
+    "productName": "MSFS ATC",
+    "win": {
+      "target": "nsis",
+      "icon": "public/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "files": [
+      "dist/**/*",
+      "src/main/**/*",
+      "src/prompts/**/*",
+      "src/assets/**/*"
+    ]
+  }
+}
