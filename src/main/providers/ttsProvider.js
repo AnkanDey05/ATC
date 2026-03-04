@@ -115,7 +115,8 @@ class TtsProvider {
                 this.costTracker.trackTts(cleanText.length, this.config.paidQuality || 'standard');
             } else {
                 const provider = this.getFreeProvider();
-                audioBuffer = await provider.synthesize(cleanText, voiceConfig.edgeVoice);
+                const region = this.config.voiceRegion || 'us';
+                audioBuffer = await provider.synthesize(cleanText, voiceConfig.edgeVoice, region);
             }
 
             // Cache common short phrases

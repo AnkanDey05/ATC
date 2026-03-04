@@ -1,0 +1,22 @@
+{
+    "VERSION": "2",
+    "TYPE": "PanelValidator",
+    "MINRANGE": 0,
+    "MAXRANGE": 100,
+    "IMAGES": {
+        "ISDEFAULT": true,
+        "IMPORT": []
+    },
+    "SOUND": {
+        "ISDEFAULT": true,
+        "IMPORT": []
+    },
+    "NODES": {
+        "NODE": {
+            "NAME": "MSFS_ATC_Panel",
+            "TYPE": "Gauge",
+            "INSTRUMENT": "MSFS_ATC",
+            "FILE": "panel.html"
+        }
+    }
+}

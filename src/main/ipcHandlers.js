@@ -6,7 +6,7 @@ function registerIpcHandlers(ipcMain, store, services) {
     const {
         sttProvider, llmProvider, ttsProvider,
         simConnect, atcStateMachine, costTracker,
-        weather, simbrief, mainWindow,
+        weather, simbrief, copilot, mainWindow,
     } = services;
 
     // ─── Settings ───────────────────────────────────────────────────────
@@ -147,6 +147,11 @@ function registerIpcHandlers(ipcMain, store, services) {
                 });
             }
 
+            // A2: Trigger copilot auto-response if enabled
+            maybeTriggerCopilot(atcResult.text);
+            // A3: Trigger auto-respond if enabled
+            atcStateMachine.triggerAutoRespond(atcResult.text);
+
             return {
                 transcript,
                 response: atcResult.text,
@@ -200,6 +205,11 @@ function registerIpcHandlers(ipcMain, store, services) {
                 });
             }
 
+            // A2: Trigger copilot auto-response if enabled
+            maybeTriggerCopilot(atcResult.text);
+            // A3: Trigger auto-respond if enabled
+            atcStateMachine.triggerAutoRespond(atcResult.text);
+
             return {
                 response: atcResult.text,
                 phase: atcResult.phase,
@@ -207,6 +217,31 @@ function registerIpcHandlers(ipcMain, store, services) {
             };
         } catch (err) {
             return { error: err.message };
+        }
+    });
+    // ─── A3: Auto-Respond event handler ─────────────────────────────────
+    atcStateMachine.on('autoRespondTriggered', async (data) => {
+        if (!data?.text) return;
+        const win = mainWindow();
+        // Show auto-response in transcript
+        if (win) {
+            win.webContents.send('autorespond:response', { text: data.text });
+        }
+        // Feed the auto-response through ATC pipeline
+        try {
+            const atcResult = await atcStateMachine.processMessage(data.text);
+            const controller = atcStateMachine.getCurrentController();
+            const voiceId = controller ? controller.voice : null;
+            const audioData = await ttsProvider.synthesize(atcResult.text, voiceId);
+            if (win) {
+                win.webContents.send('tts:audio', {
+                    audio: audioData ? Array.from(audioData) : null,
+                    text: atcResult.text,
+                    controller: controller,
+                });
+            }
+        } catch (err) {
+            console.error('[AutoRespond] Follow-up ATC error:', err.message);
         }
     });
 
@@ -296,6 +331,62 @@ function registerIpcHandlers(ipcMain, store, services) {
         return true;
     });
 
+    // ─── Copilot ────────────────────────────────────────────────────────
+    ipcMain.handle('copilot:enable', () => {
+        copilot.enable();
+        return true;
+    });
+
+    ipcMain.handle('copilot:disable', () => {
+        copilot.disable();
+        return true;
+    });
+
+    ipcMain.handle('copilot:status', () => {
+        return { enabled: copilot.isEnabled() };
+    });
+
+    // Copilot auto-response: when ATC responds, copilot generates pilot readback
+    copilot.on('pilotResponse', async (data) => {
+        if (!data?.text) return;
+        const win = mainWindow();
+        // Show copilot text in transcript
+        if (win) {
+            win.webContents.send('copilot:response', { text: data.text });
+        }
+        // Send pilot readback through ATC pipeline
+        try {
+            const atcResult = await atcStateMachine.processMessage(data.text);
+            const controller = atcStateMachine.getCurrentController();
+            const voiceId = controller ? controller.voice : null;
+            const audioData = await ttsProvider.synthesize(atcResult.text, voiceId);
+            if (win) {
+                win.webContents.send('tts:audio', {
+                    audio: audioData ? Array.from(audioData) : null,
+                    text: atcResult.text,
+                    controller: controller,
+                });
+            }
+        } catch (err) {
+            console.error('[Copilot] Follow-up ATC error:', err.message);
+        }
+    });
+
+    // ─── Auto-Respond (CENTER cruise mode) ──────────────────────────────
+    ipcMain.handle('autorespond:enable', () => {
+        atcStateMachine.autoRespondMode = true;
+        return true;
+    });
+
+    ipcMain.handle('autorespond:disable', () => {
+        atcStateMachine.autoRespondMode = false;
+        return true;
+    });
+
+    ipcMain.handle('autorespond:status', () => {
+        return { enabled: !!atcStateMachine.autoRespondMode };
+    });
+
     // ─── Window Controls ───────────────────────────────────────────────
     ipcMain.handle('window:minimize', () => {
         const win = mainWindow();
@@ -320,11 +411,38 @@ function registerIpcHandlers(ipcMain, store, services) {
         if (win) win.setAlwaysOnTop(value);
     });
 
+    // C1: Overlay mode
+    ipcMain.handle('window:setOverlayMode', (event, enabled) => {
+        const win = mainWindow();
+        if (!win) return;
+        win.setAlwaysOnTop(enabled, 'screen-saver');
+        win.setOpacity(enabled ? 0.92 : 1.0);
+        if (enabled) {
+            win.setSize(420, 320);
+            win.setResizable(false);
+        } else {
+            win.setSize(900, 700);
+            win.setResizable(true);
+        }
+        store.set('overlayMode', enabled);
+    });
+
     // ─── SimConnect Mock Controls ──────────────────────────────────────
     ipcMain.handle('sim:updateMock', (_event, updates) => {
         simConnect.updateMockState(updates);
         return true;
     });
+
+    // ─── Helper: trigger copilot after ATC response ────────────────────
+    function maybeTriggerCopilot(atcText) {
+        if (copilot.isEnabled() && atcText) {
+            copilot.scheduleAutoResponse(
+                atcText,
+                atcStateMachine.flightPlan,
+                atcStateMachine.lastSimState,
+            );
+        }
+    }
 }
 
 module.exports = { registerIpcHandlers };

@@ -1,4 +1,5 @@
 const EventEmitter = require('events');
+const { ArtccManager } = require('./artcc');
 
 /**
  * ATC State Machine
@@ -76,6 +77,25 @@ class AtcStateMachine extends EventEmitter {
         this.weatherData = null;
         this.lastSimState = null;
         this.phaseTimestamp = Date.now();
+
+        // A3: Auto-respond mode (CENTER only)
+        this.autoRespondMode = false;
+        this._autoRespondTimeout = null;
+
+        // A4: COM frequency change detection
+        this._prevComFrequency = 0;
+
+        // A5: TOD alert
+        this.todAlerted = false;
+        this.lastTodCheck = 0;
+
+        // A6: ARTCC boundary detection
+        this.artccManager = new ArtccManager();
+        this._lastArtccCheck = 0;
+
+        // B1: ATIS auto-broadcast on engine start
+        this._prevEnginesRunning = false;
+        this._atisBroadcasted = false;
 
         // Generate unique controllers for this session
         this.initControllers();
@@ -172,11 +192,21 @@ class AtcStateMachine extends EventEmitter {
     processSimState(simState) {
         this.lastSimState = simState;
         const prev = this.currentPhase;
+        const now = Date.now();
+
+        // C2: Waypoint tracking
+        this.checkWaypointProgress(simState);
 
         switch (this.currentPhase) {
 
             case PHASES.ATIS:
-                // ATIS → CLEARANCE via explicit pilot acknowledgment (IPC call)
+                // B1: Auto-broadcast ATIS when engines start
+                if (!this._atisBroadcasted && this.flightPlan &&
+                    simState.enginesRunning && !this._prevEnginesRunning) {
+                    this._atisBroadcasted = true;
+                    this.emit('broadcastAtis');
+                }
+                this._prevEnginesRunning = !!simState.enginesRunning;
                 break;
 
             case PHASES.CLEARANCE:
@@ -216,6 +246,30 @@ class AtcStateMachine extends EventEmitter {
                         this.transitionTo(PHASES.APPROACH);
                     }
                 }
+                // A6: ARTCC boundary check every 60 seconds
+                if (now - this._lastArtccCheck > 60000) {
+                    this._lastArtccCheck = now;
+                    const crossing = this.artccManager.checkBoundaryCrossing(
+                        simState.latitude, simState.longitude
+                    );
+                    if (crossing) {
+                        // Generate new controller for new sector
+                        const newName = CONTROLLER_NAMES[Math.floor(Math.random() * CONTROLLER_NAMES.length)];
+                        this.controllers.CENTER.name = newName;
+                        this.controllers.CENTER.frequency = crossing.to.frequency;
+                        this.controllers.CENTER.station = crossing.to.name;
+                        this.conversationHistory = []; // New sector = new convo
+                        this.emit('centerHandoff', {
+                            from: crossing.from,
+                            to: crossing.to,
+                            controller: newName,
+                        });
+                        const callsign = this.flightPlan?.callsign || 'Aircraft';
+                        this.emit('atcInitiated', {
+                            text: `${callsign}, contact ${crossing.to.name} on ${crossing.to.frequency}, good day.`,
+                        });
+                    }
+                }
                 break;
 
             case PHASES.APPROACH:
@@ -239,6 +293,128 @@ class AtcStateMachine extends EventEmitter {
                 }
                 break;
         }
+
+        // ── A4: COM frequency change detection ──────────────────
+        const newComFreq = simState.comFrequency1 || 0;
+        if (this._prevComFrequency && Math.abs(this._prevComFrequency - newComFreq) > 0.005) {
+            const freqStr = newComFreq.toFixed(3);
+            const matched = this.tuneToFrequency(freqStr);
+            if (matched) {
+                this.emit('autoTuned', { phase: matched, frequency: freqStr });
+            }
+        }
+        this._prevComFrequency = newComFreq;
+
+        // ── A5: TOD alert (CENTER phase only) ───────────────────
+        if (this.currentPhase === 'CENTER' && (!this.lastTodCheck || now - this.lastTodCheck > 30000)) {
+            this.lastTodCheck = now;
+            const destElev = this.flightPlan?.destElevation || 0;
+            const altToLose = simState.altitude - destElev;
+            if (altToLose > 1000) {
+                const todDistance = (altToLose / 1000) * 3; // nm needed
+                const distToDest = this.calcDistanceToDestination(simState);
+                if (!this.todAlerted && distToDest <= todDistance + 20 && distToDest > 0) {
+                    this.todAlerted = true;
+                    const nmToTod = Math.round(distToDest - todDistance);
+                    this.emit('todApproaching', {
+                        distance: nmToTod,
+                        todDistance: Math.round(todDistance),
+                    });
+                    // Center proactively contacts pilot
+                    const callsign = this.flightPlan?.callsign || 'Aircraft';
+                    const todMessage = `${callsign}, top of descent in approximately ${Math.max(0, nmToTod)} miles. Expect descent clearance shortly.`;
+                    this.emit('atcInitiated', { text: todMessage });
+                }
+            }
+        }
+    }
+
+    /**
+     * A3: Auto-respond mode — generate contextual pilot response during CENTER
+     */
+    triggerAutoRespond(atcMessage) {
+        if (!this.autoRespondMode || this.currentPhase !== 'CENTER') return;
+        if (this._autoRespondTimeout) clearTimeout(this._autoRespondTimeout);
+
+        const delay = 3000 + Math.random() * 3000; // 3-6 seconds
+        this._autoRespondTimeout = setTimeout(() => {
+            if (!this.autoRespondMode || this.currentPhase !== 'CENTER') return;
+
+            const callsign = this.flightPlan?.callsign || 'Aircraft';
+            const currentFL = Math.round((this.lastSimState?.altitude || 0) / 100);
+            const msg = atcMessage.toLowerCase();
+            let response;
+
+            if (/\b(climb|descend|proceed|turn|maintain heading)\b/.test(msg)) {
+                response = `Wilco, ${callsign}`;
+            } else if (/\b(direct|direct to)\b/.test(msg)) {
+                // Extract waypoint name if possible
+                const wpMatch = atcMessage.match(/direct\s+(?:to\s+)?(\w{2,5})/i);
+                const wp = wpMatch ? wpMatch[1].toUpperCase() : 'DIRECT';
+                response = `${callsign}, direct ${wp}, wilco`;
+            } else if (/\b(position|say position|ident)\b/.test(msg)) {
+                response = `${callsign}, maintaining FL${currentFL}`;
+            } else {
+                response = `Roger, ${callsign}`;
+            }
+
+            this.emit('autoRespondTriggered', { text: response });
+            this._autoRespondTimeout = null;
+        }, delay);
+    }
+
+    /**
+     * C2: Check if aircraft has passed any waypoints
+     */
+    checkWaypointProgress(simState) {
+        if (!this.flightPlan?.waypoints || !simState.latitude) return;
+
+        const wps = this.flightPlan.waypoints;
+        if (!this._passedWaypoints) this._passedWaypoints = new Set();
+
+        for (const wp of wps) {
+            if (this._passedWaypoints.has(wp.ident)) continue;
+            if (!wp.lat || !wp.lon) continue;
+
+            // Calculate distance to waypoint
+            const dist = this.calcDistance(simState.latitude, simState.longitude, wp.lat, wp.lon);
+            if (dist > 5) continue; // Must be within 5nm
+
+            // Check if aircraft has passed waypoint (bearing > 90° off heading)
+            const bearing = this.calcBearing(simState.latitude, simState.longitude, wp.lat, wp.lon);
+            const diff = Math.abs(bearing - simState.heading);
+            const normalizedDiff = diff > 180 ? 360 - diff : diff;
+            if (normalizedDiff > 90) {
+                this._passedWaypoints.add(wp.ident);
+                this.emit('waypointPassed', {
+                    ident: wp.ident,
+                    passed: Array.from(this._passedWaypoints),
+                    total: wps.length,
+                });
+            }
+        }
+    }
+
+    calcDistance(lat1, lon1, lat2, lon2) {
+        const R = 3440.065; // Earth radius in nm
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    calcBearing(lat1, lon1, lat2, lon2) {
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180);
+        const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+            Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon);
+        return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+    }
+
+    getPassedWaypoints() {
+        return Array.from(this._passedWaypoints || []);
     }
 
     transitionTo(newPhase) {

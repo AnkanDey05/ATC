@@ -33,6 +33,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     forcePhase: (phase) => ipcRenderer.invoke('atc:forcePhase', phase),
     tuneFrequency: (freq) => ipcRenderer.invoke('atc:tuneFrequency', freq),
 
+    // Copilot
+    enableCopilot: () => ipcRenderer.invoke('copilot:enable'),
+    disableCopilot: () => ipcRenderer.invoke('copilot:disable'),
+    getCopilotStatus: () => ipcRenderer.invoke('copilot:status'),
+
+    // Auto-respond
+    enableAutoRespond: () => ipcRenderer.invoke('autorespond:enable'),
+    disableAutoRespond: () => ipcRenderer.invoke('autorespond:disable'),
+    getAutoRespondStatus: () => ipcRenderer.invoke('autorespond:status'),
+
+    // Overlay
+    setOverlayMode: (enabled) => ipcRenderer.invoke('window:setOverlayMode', enabled),
+
     // Cost Tracker
     getCosts: () => ipcRenderer.invoke('cost:get'),
     resetCosts: () => ipcRenderer.invoke('cost:reset'),
@@ -78,5 +91,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
         const sub = (_event, status) => callback(status);
         ipcRenderer.on('ptt:status', sub);
         return () => ipcRenderer.removeListener('ptt:status', sub);
+    },
+    onCopilotResponse: (callback) => {
+        const sub = (_event, data) => callback(data);
+        ipcRenderer.on('copilot:response', sub);
+        return () => ipcRenderer.removeListener('copilot:response', sub);
+    },
+    onAutoTuned: (callback) => {
+        const sub = (_event, data) => callback(data);
+        ipcRenderer.on('atc:autoTuned', sub);
+        return () => ipcRenderer.removeListener('atc:autoTuned', sub);
+    },
+    onTodAlert: (callback) => {
+        const sub = (_event, data) => callback(data);
+        ipcRenderer.on('atc:todAlert', sub);
+        return () => ipcRenderer.removeListener('atc:todAlert', sub);
+    },
+    onAutoRespondResponse: (callback) => {
+        const sub = (_event, data) => callback(data);
+        ipcRenderer.on('autorespond:response', sub);
+        return () => ipcRenderer.removeListener('autorespond:response', sub);
+    },
+    onWaypointPassed: (callback) => {
+        const sub = (_event, data) => callback(data);
+        ipcRenderer.on('atc:waypointPassed', sub);
+        return () => ipcRenderer.removeListener('atc:waypointPassed', sub);
     },
 });

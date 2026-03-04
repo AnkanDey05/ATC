@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MSFS ATC Panel</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0e17;
+            color: #e2e8f0;
+            font-family: 'Segoe UI', 'JetBrains Mono', monospace;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .panel {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            padding: 8px;
+            gap: 6px;
+        }
+
+        .top-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 10px;
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            border-radius: 6px;
+        }
+
+        .phase-badge {
+            font-size: 14px;
+            font-weight: 700;
+            color: #38bdf8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .frequency {
+            font-size: 20px;
+            font-weight: 800;
+            color: #4ade80;
+            font-family: monospace;
+        }
+
+        .connection {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 10px;
+            color: #64748b;
+        }
+
+        .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #ef4444;
+        }
+
+        .dot.connected {
+            background: #4ade80;
+        }
+
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 4px;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(56, 189, 248, 0.1);
+            border-radius: 6px;
+        }
+
+        .msg {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        .msg.atc {
+            background: rgba(56, 189, 248, 0.1);
+            border-left: 2px solid #38bdf8;
+            color: #bae6fd;
+        }
+
+        .msg.pilot {
+            background: rgba(74, 222, 128, 0.1);
+            border-left: 2px solid #4ade80;
+            color: #bbf7d0;
+        }
+
+        .ptt-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            color: #64748b;
+        }
+
+        .ptt-status.active {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: rgba(239, 68, 68, 0.4);
+            color: #fca5a5;
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="panel">
+        <div class="top-bar">
+            <div class="phase-badge" id="phase">ATIS</div>
+            <div class="frequency" id="frequency">118.00</div>
+            <div class="connection">
+                <div class="dot" id="connectionDot"></div>
+                <span id="connectionText">Disconnected</span>
+            </div>
+        </div>
+
+        <div class="messages" id="messages">
+            <div class="msg atc" style="color: #64748b; text-align: center;">
+                Waiting for ATC connection...
+            </div>
+        </div>
+
+        <div class="ptt-status" id="pttStatus">
+            PTT: IDLE
+        </div>
+    </div>
+
+    <script src="panel.js"></script>
+</body>
+
+</html>

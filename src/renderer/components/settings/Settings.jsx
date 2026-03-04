@@ -9,6 +9,7 @@ const TABS = [
     { id: 'providers', label: '🤖 AI Providers', icon: '🤖' },
     { id: 'audio', label: '🔊 Audio', icon: '🔊' },
     { id: 'keybinds', label: '⌨ Keybinds', icon: '⌨' },
+    { id: 'display', label: '💻 Display', icon: '💻' },
 ];
 
 export default function Settings({ providerConfig, onConfigChange, costs, onAudioSettingsChange }) {
@@ -74,6 +75,38 @@ export default function Settings({ providerConfig, onConfigChange, costs, onAudi
                 )}
                 {activeTab === 'audio' && <AudioSettings onAudioSettingsChange={onAudioSettingsChange} />}
                 {activeTab === 'keybinds' && <KeybindSettings />}
+                {activeTab === 'display' && (
+                    <div className="glass-panel-solid p-5 space-y-4">
+                        <div className="flex items-center gap-2">
+                            <span className="text-lg">💻</span>
+                            <h3 className="font-semibold text-atc-text">Display Settings</h3>
+                        </div>
+                        <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
+                            <div>
+                                <div className="text-sm font-medium text-atc-text">Overlay Mode</div>
+                                <div className="text-xs text-atc-text-muted">Always-on-top, compact, semi-transparent window</div>
+                            </div>
+                            <button
+                                onClick={() => api?.setOverlayMode(true)}
+                                className="px-3 py-1.5 bg-atc-accent/20 text-atc-accent border border-atc-accent/30 rounded text-xs font-medium hover:bg-atc-accent/30 transition-all"
+                            >
+                                Enable Overlay
+                            </button>
+                        </div>
+                        <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
+                            <div>
+                                <div className="text-sm font-medium text-atc-text">Normal Mode</div>
+                                <div className="text-xs text-atc-text-muted">Full-size resizable window</div>
+                            </div>
+                            <button
+                                onClick={() => api?.setOverlayMode(false)}
+                                className="px-3 py-1.5 bg-atc-surface-2 text-atc-text-muted border border-atc-border rounded text-xs font-medium hover:text-atc-text hover:bg-atc-surface-2/80 transition-all"
+                            >
+                                Normal Mode
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

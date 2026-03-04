@@ -1,0 +1,32 @@
+{
+    "ContentType": "MISC",
+    "Title": "MSFS ATC Panel",
+    "Manufacturer": "",
+    "Creator": "MSFS ATC App",
+    "PackageVersion": "1.0.0",
+    "MinimumGameVersion": "1.0.0",
+    "ReleaseNotes": {
+        "NeutralLanguage": {
+            "LastUpdate": "",
+            "OlderHistory": ""
+        }
+    },
+    "TotalPackageSize": "0000000000001000",
+    "content": [
+        {
+            "Path": "panel.html",
+            "Size": 3000,
+            "Date": 131775000000000000
+        },
+        {
+            "Path": "panel.js",
+            "Size": 3000,
+            "Date": 131775000000000000
+        },
+        {
+            "Path": "VCockpit.manifest.json",
+            "Size": 500,
+            "Date": 131775000000000000
+        }
+    ]
+}

@@ -22,6 +22,7 @@ export default function App() {
     const [isRecording, setIsRecording] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [providerConfig, setProviderConfig] = useState(null);
+    const [flightPlan, setFlightPlan] = useState(null);
 
     // Load initial data & sync audio settings
     useEffect(() => {
@@ -30,6 +31,7 @@ export default function App() {
         api.getProviderConfig().then(setProviderConfig);
         api.getCosts().then(setCosts);
         api.getAtcState().then(setAtcPhase);
+        api.getFlightPlan().then(fp => { if (fp) setFlightPlan(fp); });
 
         // Apply saved audio settings to the engine
         api.getSettings().then(settings => {
@@ -88,6 +90,27 @@ export default function App() {
                             timestamp: Date.now(),
                         }];
                     });
+                }
+            }),
+
+            // A2: Copilot auto-responses
+            api.onCopilotResponse?.((data) => {
+                if (data?.text) {
+                    setTranscript(prev => [...prev, {
+                        type: 'pilot',
+                        text: `🤖 ${data.text}`,
+                        timestamp: Date.now(),
+                    }]);
+                }
+            }),
+            // A3: Auto-respond responses
+            api.onAutoRespondResponse?.((data) => {
+                if (data?.text) {
+                    setTranscript(prev => [...prev, {
+                        type: 'pilot',
+                        text: `✈️ ${data.text}`,
+                        timestamp: Date.now(),
+                    }]);
                 }
             }),
         ];
@@ -329,6 +352,7 @@ export default function App() {
                         onSendMessage={sendMessage}
                         simConnected={simConnected}
                         simMock={simMock}
+                        flightPlan={flightPlan}
                     />
                 ) : (
                     <Settings

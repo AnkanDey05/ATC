@@ -275,6 +275,27 @@ export default function ProviderToggles({ config, onConfigChange, apiKeys, onApi
                             <div className="text-sm font-medium text-atc-text">Free — Microsoft Edge TTS</div>
                             <div className="text-xs text-atc-text-muted mt-0.5">No API key needed. Good quality voices from Edge.</div>
                         </div>
+                        {config.tts.provider === 'free' && (
+                            <div className="px-3 pb-3 pl-9 space-y-2">
+                                <div onClick={(e) => e.stopPropagation()}>
+                                    <span className="text-[10px] text-atc-text-muted">Controller Region:</span>
+                                    <select
+                                        value={config.tts.voiceRegion || 'us'}
+                                        onChange={(e) => updateProvider('tts', 'voiceRegion', e.target.value)}
+                                        className="ml-2 bg-atc-bg border border-atc-border rounded px-2 py-0.5 text-xs text-atc-text"
+                                    >
+                                        <option value="us">US English</option>
+                                        <option value="gb">UK English</option>
+                                        <option value="au">Australian</option>
+                                        <option value="ie">Irish</option>
+                                        <option value="in">Indian</option>
+                                        <option value="za">South African</option>
+                                        <option value="ca">Canadian</option>
+                                        <option value="mixed">Mixed (random per station)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Paid TTS (OpenAI) */}
