@@ -117,4 +117,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('atc:waypointPassed', sub);
         return () => ipcRenderer.removeListener('atc:waypointPassed', sub);
     },
+
+    // Traffic
+    onTrafficUpdate: (cb) => {
+        const sub = (_event, data) => cb(data);
+        ipcRenderer.on('sim:traffic', sub);
+        return () => ipcRenderer.removeListener('sim:traffic', sub);
+    },
+
+    // Pushback
+    requestPushback: (dir) => ipcRenderer.invoke('atc:pushback', dir),
 });

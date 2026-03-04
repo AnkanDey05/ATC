@@ -123,11 +123,20 @@ app.whenReady().then(() => {
             mainWindow.webContents.send('sim:state', state);
         }
         atcStateMachine.processSimState(state);
+        // Feed latest traffic snapshot to ATC state machine
+        atcStateMachine.setTrafficData(simConnect.getNearbyAircraft());
     });
 
     simConnect.on('connectionStatus', (status) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('sim:connectionStatus', status);
+        }
+    });
+
+    // Forward AI traffic data to renderer
+    simConnect.on('trafficUpdate', (aircraft) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('sim:traffic', aircraft);
         }
     });
 

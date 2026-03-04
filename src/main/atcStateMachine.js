@@ -32,16 +32,26 @@ const HANDOFF_MAP = {
 };
 
 // Controller voice mappings — each station gets a UNIQUE voice for realism
+// Diverse accents (UK, AU, IE, CA) + rate/pitch for clearly distinct voices
 const STATION_VOICES = {
-    ATIS: { edgeVoice: 'en-US-JennyNeural', openaiVoice: 'shimmer', label: 'ATIS' },
-    CLEARANCE: { edgeVoice: 'en-US-ChristopherNeural', openaiVoice: 'alloy', label: 'Clearance' },
-    GROUND_DEP: { edgeVoice: 'en-US-GuyNeural', openaiVoice: 'fable', label: 'Ground' },
-    TOWER_DEP: { edgeVoice: 'en-US-DavisNeural', openaiVoice: 'echo', label: 'Tower' },
-    DEPARTURE: { edgeVoice: 'en-US-AndrewNeural', openaiVoice: 'onyx', label: 'Departure' },
-    CENTER: { edgeVoice: 'en-US-BrianNeural', openaiVoice: 'nova', label: 'Center' },
-    APPROACH: { edgeVoice: 'en-US-EricNeural', openaiVoice: 'onyx', label: 'Approach' },
-    TOWER_ARR: { edgeVoice: 'en-US-RogerNeural', openaiVoice: 'echo', label: 'Tower' },
-    GROUND_ARR: { edgeVoice: 'en-US-TonyNeural', openaiVoice: 'alloy', label: 'Ground' },
+    // ATIS: Female US — automated, measured
+    ATIS: { edgeVoice: 'en-US-JennyNeural', openaiVoice: 'shimmer', label: 'ATIS', rate: '-10%', pitch: '-2Hz' },
+    // CLEARANCE: Male UK accent — immediately distinct from US Ground/Tower
+    CLEARANCE: { edgeVoice: 'en-GB-RyanNeural', openaiVoice: 'alloy', label: 'Clearance', rate: '+0%', pitch: '+0Hz' },
+    // GROUND DEP: Male Australian — lower pitch, faster
+    GROUND_DEP: { edgeVoice: 'en-AU-WilliamNeural', openaiVoice: 'fable', label: 'Ground', rate: '+8%', pitch: '-8Hz' },
+    // TOWER DEP: Male US — standard American tower voice
+    TOWER_DEP: { edgeVoice: 'en-US-DavisNeural', openaiVoice: 'echo', label: 'Tower', rate: '+5%', pitch: '+3Hz' },
+    // DEPARTURE: Female US — clearly different from Tower
+    DEPARTURE: { edgeVoice: 'en-US-NancyNeural', openaiVoice: 'nova', label: 'Departure', rate: '+5%', pitch: '+0Hz' },
+    // CENTER: Male Irish — very distinct for long en-route phase
+    CENTER: { edgeVoice: 'en-IE-ConnorNeural', openaiVoice: 'onyx', label: 'Center', rate: '-5%', pitch: '-4Hz' },
+    // APPROACH: Male US deeper voice — different from Tower
+    APPROACH: { edgeVoice: 'en-US-BrianNeural', openaiVoice: 'onyx', label: 'Approach', rate: '+0%', pitch: '-6Hz' },
+    // TOWER ARR: Male Canadian accent
+    TOWER_ARR: { edgeVoice: 'en-CA-LiamNeural', openaiVoice: 'echo', label: 'Tower', rate: '+3%', pitch: '+0Hz' },
+    // GROUND ARR: Female Australian — distinct from all others
+    GROUND_ARR: { edgeVoice: 'en-AU-NatashaNeural', openaiVoice: 'nova', label: 'Ground', rate: '+5%', pitch: '+2Hz' },
 };
 
 // Realistic controller first names
@@ -76,6 +86,7 @@ class AtcStateMachine extends EventEmitter {
         this.flightPlan = null;
         this.weatherData = null;
         this.lastSimState = null;
+        this.nearbyTraffic = [];
         this.phaseTimestamp = Date.now();
 
         // A3: Auto-respond mode (CENTER only)
@@ -124,6 +135,10 @@ class AtcStateMachine extends EventEmitter {
 
     setWeatherData(data) {
         this.weatherData = data;
+    }
+
+    setTrafficData(aircraft) {
+        this.nearbyTraffic = aircraft || [];
     }
 
     getCurrentController() {
@@ -487,13 +502,48 @@ class AtcStateMachine extends EventEmitter {
             flightPlan: this.flightPlan || {},
             weather: this.weatherData || {},
             simState: this.lastSimState || {},
+            traffic: this.nearbyTraffic || [],
         });
 
-        // Prepend callsign enforcement
+        // Prepend flexible callsign enforcement (Bug #2 fix)
         const callsign = this.flightPlan?.callsign;
-        const callsignLock = callsign
-            ? `AUTHORIZED CALLSIGN: "${callsign}". This is the ONLY callsign you should accept. If a pilot identifies with a different callsign, challenge them and do NOT provide service.\n\n`
-            : `NO CALLSIGN ON FILE. Ask any calling station to identify themselves.\n\n`;
+        let callsignLock;
+
+        if (callsign) {
+            // Derive all legitimate abbreviated forms
+            const numericOnly = callsign.replace(/[^0-9]/g, '');
+            const alphaNumeric = callsign.replace(/[^A-Z0-9]/gi, '');
+
+            // Phonetic spelling of alphanumeric (for voice readbacks)
+            const NATO = {
+                A: 'Alpha', B: 'Bravo', C: 'Charlie', D: 'Delta', E: 'Echo', F: 'Foxtrot',
+                G: 'Golf', H: 'Hotel', I: 'India', J: 'Juliet', K: 'Kilo', L: 'Lima',
+                M: 'Mike', N: 'November', O: 'Oscar', P: 'Papa', Q: 'Quebec', R: 'Romeo',
+                S: 'Sierra', T: 'Tango', U: 'Uniform', V: 'Victor', W: 'Whiskey',
+                X: 'Xray', Y: 'Yankee', Z: 'Zulu'
+            };
+            const phoneticCallsign = alphaNumeric.split('').map(c =>
+                /[A-Z]/i.test(c) ? (NATO[c.toUpperCase()] || c) : c
+            ).join(' ');
+
+            callsignLock = `CALLSIGN RULES:
+The aircraft on this frequency has filed callsign: "${callsign}".
+You MUST accept ALL of these as valid from the same pilot:
+  - Full callsign: "${callsign}"
+  - Alphanumeric short form: "${alphaNumeric}"
+  - Numeric only: "${numericOnly}"
+  - Phonetic spoken form: "${phoneticCallsign}"
+  - Any reasonable phonetic/spoken variation of the above
+
+On FIRST contact from this aircraft on a NEW frequency: expect full callsign.
+On SUBSEQUENT calls on same frequency: abbreviated form is correct and expected.
+NEVER challenge abbreviations of the correct callsign — this is normal aviation practice.
+ONLY challenge completely unrecognized callsigns that share NO digits with "${callsign}".
+
+`;
+        } else {
+            callsignLock = `NO CALLSIGN ON FILE. Ask any calling station to identify themselves and state intentions.\n\n`;
+        }
 
         return callsignLock + basePrompt;
     }

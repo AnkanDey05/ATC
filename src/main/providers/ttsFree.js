@@ -97,15 +97,21 @@ class TtsFree {
      * @param {string} text - Text to speak
      * @param {string} voice - Edge TTS voice name (e.g., 'en-US-GuyNeural')
      * @param {string} [region] - Optional region override (us, gb, au, ie, in, za, ca, mixed)
+     * @param {string} [rate] - Speech rate adjustment (e.g., '+5%', '-10%')
+     * @param {string} [pitch] - Pitch adjustment (e.g., '-10Hz', '+5Hz')
      * @returns {Buffer} - MP3 audio data
      */
-    async synthesize(text, voice = 'en-US-GuyNeural', region) {
+    async synthesize(text, voice = 'en-US-GuyNeural', region, rate = '+0%', pitch = '+0Hz') {
         // B2: Resolve regional accent
         const resolvedVoice = region ? this.resolveVoice(voice, region) : voice;
 
         try {
             const mod = await this.getMod();
-            const communicate = new mod.Communicate(text, resolvedVoice);
+            // Pass rate and pitch to Edge TTS for voice variation
+            const communicate = new mod.Communicate(text, resolvedVoice, {
+                rate,
+                pitch,
+            });
 
             const audioChunks = [];
             for await (const chunk of communicate.stream()) {
@@ -120,7 +126,7 @@ class TtsFree {
             }
 
             const audioBuffer = Buffer.concat(audioChunks);
-            console.log(`[TTS Free] Generated ${audioBuffer.length} bytes (voice: ${resolvedVoice})`);
+            console.log(`[TTS Free] Generated ${audioBuffer.length} bytes (voice: ${resolvedVoice}, rate: ${rate}, pitch: ${pitch})`);
             return audioBuffer;
         } catch (err) {
             console.error('[TTS Free] Communicate error:', err.message);

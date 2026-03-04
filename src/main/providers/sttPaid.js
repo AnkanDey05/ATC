@@ -19,14 +19,24 @@ class SttPaid {
         return this.client;
     }
 
-    async transcribe(audioBuffer) {
+    async transcribe(audioBuffer, aviationContext = {}) {
         if (!this.apiKey) {
             throw new Error('OpenAI API key not configured for STT');
         }
 
-        // Write buffer to a temp file (OpenAI SDK requires file path)
         const tmpPath = path.join(os.tmpdir(), `atc-stt-${Date.now()}.wav`);
         fs.writeFileSync(tmpPath, audioBuffer);
+
+        const { callsign = '', origin = '', destination = '', aircraftType = '' } = aviationContext;
+        const prompt = [
+            'Aviation ATC radio. ICAO phraseology.',
+            callsign ? `Callsign: ${callsign}.` : '',
+            origin ? `From ${origin}.` : '',
+            destination ? `To ${destination}.` : '',
+            aircraftType ? `Aircraft: ${aircraftType}.` : '',
+            'Vocabulary: hold short, cleared, squawk, wilco, roger, say again,',
+            'maintain, heading, flight level, frequency, contact, pushback approved.',
+        ].filter(Boolean).join(' ');
 
         try {
             const client = this.getClient();
@@ -34,12 +44,11 @@ class SttPaid {
                 file: fs.createReadStream(tmpPath),
                 model: 'whisper-1',
                 language: 'en',
-                prompt: 'ATC aviation radio communication. Callsign, altitude, heading, runway, clearance.',
+                prompt,  // ← Injected aviation + callsign context
             });
 
             return transcription.text || '';
         } finally {
-            // Clean up temp file
             try { fs.unlinkSync(tmpPath); } catch { }
         }
     }

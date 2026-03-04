@@ -164,6 +164,30 @@ function registerIpcHandlers(ipcMain, store, services) {
         }
     });
 
+    // ── Pushback request handler ──────────────────────────────────────
+    ipcMain.handle('atc:pushback', async (_event, direction) => {
+        const pushbackMessage = direction
+            ? `Request pushback, facing ${direction}`
+            : 'Request pushback';
+        try {
+            const atcResult = await atcStateMachine.processMessage(pushbackMessage);
+            const win = mainWindow();
+            if (!win || win.isDestroyed()) return;
+            const controller = atcStateMachine.getCurrentController();
+            const voiceId = controller ? controller.voice : null;
+            const audioData = await ttsProvider.synthesize(atcResult.text, voiceId);
+            win.webContents.send('tts:audio', {
+                audio: audioData ? Array.from(audioData) : null,
+                text: atcResult.text,
+                controller,
+            });
+            return { success: true, text: atcResult.text };
+        } catch (err) {
+            console.error('[Pushback] Error:', err.message);
+            return { success: false };
+        }
+    });
+
     // ── Handoff / non-radio-call filter ──────────────────────────────
     // Detects frequency changes, goodbyes, and initial contact calls on new freq.
     // Real ATC on the OLD frequency does NOT respond to these.

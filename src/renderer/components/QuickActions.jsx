@@ -3,7 +3,7 @@ import React from 'react';
 const PHASE_ACTIONS = {
     ATIS: ['Request Clearance', 'Say Again', 'ATIS Received'],
     CLEARANCE: ['Ready to Copy', 'Confirm Squawk', 'Read Back Correct', 'Say Again'],
-    GROUND_DEP: ['Ready to Taxi', 'Request Pushback', 'Hold Short Acknowledged', 'Wilco'],
+    GROUND_DEP: ['Request Pushback', 'Pushback Complete', 'Ready to Taxi', 'Hold Short Acknowledged', 'Wilco'],
     TOWER_DEP: ['Ready for Departure', 'Holding Short', 'Request Immediate', 'Wilco'],
     DEPARTURE: ['Climbing Through {alt}', 'Request Higher', 'Reaching {alt}', 'Wilco'],
     CENTER: ['Level at FL{alt}', 'Request FL{newAlt}', 'Say Again', 'Wilco', 'Position Report', 'Request Direct {nextWaypoint}'],

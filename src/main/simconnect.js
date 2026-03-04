@@ -18,6 +18,12 @@ class SimConnectManager extends EventEmitter {
         // SimConnect data definition IDs
         this.DATA_DEF_ID = 0;
         this.REQUEST_ID = 0;
+
+        // Traffic scanning
+        this.TRAFFIC_DEF_ID = 1;
+        this.TRAFFIC_REQ_ID = 1;
+        this.nearbyAircraft = [];
+        this.lastTrafficScan = 0;
     }
 
     getDefaultState() {
@@ -148,6 +154,50 @@ class SimConnectManager extends EventEmitter {
                 this.parseSimData(recvData);
             }
         });
+
+        // ── Traffic data definition ───────────────────────────────────
+        handle.addToDataDefinition(this.TRAFFIC_DEF_ID, 'PLANE LATITUDE', 'degrees', SimConnectDataType.FLOAT64);
+        handle.addToDataDefinition(this.TRAFFIC_DEF_ID, 'PLANE LONGITUDE', 'degrees', SimConnectDataType.FLOAT64);
+        handle.addToDataDefinition(this.TRAFFIC_DEF_ID, 'PLANE ALTITUDE', 'feet', SimConnectDataType.FLOAT64);
+        handle.addToDataDefinition(this.TRAFFIC_DEF_ID, 'AIRSPEED INDICATED', 'knots', SimConnectDataType.FLOAT64);
+        handle.addToDataDefinition(this.TRAFFIC_DEF_ID, 'PLANE HEADING DEGREES MAGNETIC', 'degrees', SimConnectDataType.FLOAT64);
+        handle.addToDataDefinition(this.TRAFFIC_DEF_ID, 'SIM ON GROUND', 'bool', SimConnectDataType.INT32);
+        handle.addToDataDefinition(this.TRAFFIC_DEF_ID, 'ATC ID', null, SimConnectDataType.STRING32);
+        handle.addToDataDefinition(this.TRAFFIC_DEF_ID, 'ATC MODEL', null, SimConnectDataType.STRING32);
+
+        // Listen for traffic data responses
+        handle.on('simObjectDataByType', (recvData) => {
+            if (recvData.requestID === this.TRAFFIC_REQ_ID) {
+                try {
+                    const d = recvData.data;
+                    const lat = d.readFloat64();
+                    const lon = d.readFloat64();
+                    const alt = d.readFloat64();
+                    const spd = d.readFloat64();
+                    const hdg = d.readFloat64();
+                    const ground = d.readInt32() === 1;
+                    const acid = d.readString32()?.trim() || 'UNKNOWN';
+                    const model = d.readString32()?.trim() || '';
+
+                    // Skip user aircraft (objectId 0)
+                    if (recvData.objectID === 0) return;
+
+                    // Update or insert into nearbyAircraft list
+                    const existing = this.nearbyAircraft.findIndex(a => a.objectId === recvData.objectID);
+                    const entry = {
+                        objectId: recvData.objectID, lat, lon, alt: Math.round(alt),
+                        speed: Math.round(spd), heading: Math.round(hdg),
+                        onGround: ground, callsign: acid, model, timestamp: Date.now()
+                    };
+                    if (existing >= 0) this.nearbyAircraft[existing] = entry;
+                    else this.nearbyAircraft.push(entry);
+
+                    // Prune stale entries (not updated in 30s)
+                    this.nearbyAircraft = this.nearbyAircraft.filter(a => Date.now() - a.timestamp < 30000);
+                    this.emit('trafficUpdate', this.nearbyAircraft);
+                } catch { }
+            }
+        });
     }
 
     parseSimData(recvData) {
@@ -232,6 +282,20 @@ class SimConnectManager extends EventEmitter {
         } catch (err) {
             console.error('[SimConnect] Failed to start polling:', err.message);
         }
+
+        // Start periodic traffic scan — every 10 seconds
+        setInterval(() => {
+            if (!this.handle || !this.connected) return;
+            try {
+                const { SimObjectType } = require('node-simconnect');
+                this.handle.requestDataOnSimObjectType(
+                    this.TRAFFIC_REQ_ID,
+                    this.TRAFFIC_DEF_ID,
+                    50000,   // 50km radius in meters
+                    SimObjectType.AIRCRAFT
+                );
+            } catch { }
+        }, 10000);
     }
 
     disconnect() {
@@ -251,6 +315,10 @@ class SimConnectManager extends EventEmitter {
         }
         this.connected = false;
         this.mockMode = false;
+    }
+
+    getNearbyAircraft() {
+        return this.nearbyAircraft || [];
     }
 }
 

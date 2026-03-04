@@ -50,7 +50,15 @@ class SttProvider {
             : this.getFreeProvider();
 
         const startTime = Date.now();
-        let result = await provider.transcribe(audioBuffer);
+
+        // Build aviation context for STT — dramatically improves accuracy
+        const callsign = this.flightPlan?.callsign || '';
+        const origin = this.flightPlan?.origin || '';
+        const destination = this.flightPlan?.destination || '';
+        const aircraftType = this.flightPlan?.aircraftType || '';
+        const aviationContext = { callsign, origin, destination, aircraftType };
+
+        let result = await provider.transcribe(audioBuffer, aviationContext);
         const duration = (Date.now() - startTime) / 1000;
 
         if (this.config.provider === 'paid') {
@@ -58,9 +66,8 @@ class SttProvider {
             this.costTracker.trackStt(audioDuration);
         }
 
-        // A7: Post-process STT output for aviation corrections
-        result = this.postProcessTranscript(result);
-
+        // Post-process with context
+        result = this.postProcessTranscript(result, aviationContext);
         return result;
     }
 
@@ -68,54 +75,63 @@ class SttProvider {
      * A7: Smart readback fallback correction
      * Fixes common STT garbling of aviation terms.
      */
-    postProcessTranscript(text) {
+    postProcessTranscript(text, ctx = {}) {
         if (!text) return text;
-        let corrected = text;
+        let corrected = text.trim();
+        const callsign = ctx.callsign || this.flightPlan?.callsign || '';
 
-        // A7: Callsign correction using flight plan context
-        const callsign = this.flightPlan?.callsign || '';
+        // Callsign fuzzy correction — match partial forms too
         if (callsign) {
-            const airline = callsign.replace(/[0-9]/g, '').trim().toLowerCase();
-            const number = callsign.replace(/[^0-9]/g, '');
-            const callsignVariants = [
-                callsign.toLowerCase(),
-                `${airline} ${number.split('').join(' ')}`, // digit by digit
-                airline + number,
-                airline + ' ' + number,
-            ];
-            for (const variant of callsignVariants) {
-                if (variant && corrected.toLowerCase().includes(variant)) {
-                    corrected = corrected.replace(new RegExp(variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), callsign);
+            const numericPart = callsign.replace(/[^0-9]/g, ''); // e.g. "342" from "6E342"
+            const alphaNumPart = callsign.replace(/[^A-Z0-9]/gi, ''); // "6E342"
+
+            // Build variants: digit-spaced forms Whisper commonly produces
+            const spacedNumeric = numericPart.split('').join(' '); // "3 4 2"
+            const spacedAlphaNum = alphaNumPart.split('').join(' '); // "6 E 3 4 2"
+
+            const variants = [
+                spacedAlphaNum,
+                spacedNumeric,
+                alphaNumPart.toLowerCase(),
+                numericPart,
+            ].filter(Boolean);
+
+            for (const variant of variants) {
+                const regex = new RegExp(variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                if (regex.test(corrected)) {
+                    corrected = corrected.replace(regex, callsign);
                     break;
                 }
             }
         }
 
-        // Fix flight level transcriptions
+        // Standard aviation corrections + common mishear fixes
         corrected = corrected
             .replace(/\bflight level\s+(\d)\s+(\d)\s+(\d)\b/gi, 'FL$1$2$3')
             .replace(/\bflight level\s+(\d)\s+(\d)\b/gi, 'FL$1$20')
-            .replace(/\bf l\s*(\d{2,3})\b/gi, 'FL$1');
-
-        // Fix frequency transcriptions
-        corrected = corrected
+            .replace(/\bf\s*l\s*([\d]+)\b/gi, 'FL$1')
             .replace(/\bone\s+two\s+one\s+decimal\s+five\b/gi, '121.5')
             .replace(/\bone\s+one\s+eight\s+decimal\s+(\d+)\b/gi, '118.$1')
             .replace(/\bone\s+two\s+(\d)\s+decimal\s+(\d+)\b/gi, '12$1.$2')
-            .replace(/\bone\s+three\s+(\d)\s+decimal\s+(\d+)\b/gi, '13$1.$2');
-
-        // Fix squawk codes
-        corrected = corrected
-            .replace(/\bsquawk\s+(\d)\s+(\d)\s+(\d)\s+(\d)\b/gi, 'squawk $1$2$3$4');
-
-        // Fix runway numbers
-        corrected = corrected
+            .replace(/\bone\s+three\s+(\d)\s+decimal\s+(\d+)\b/gi, '13$1.$2')
+            .replace(/\bsquawk\s+(\d)\s+(\d)\s+(\d)\s+(\d)\b/gi, 'squawk $1$2$3$4')
             .replace(/\brunway\s+(\d)\s+(\d)\s*(left|right|center)?\b/gi,
-                (m, d1, d2, side) => `runway ${d1}${d2}${side ? ' ' + side : ''}`);
-
-        // Fix heading calls
-        corrected = corrected
-            .replace(/\bheading\s+(\d)\s+(\d)\s+(\d)\b/gi, 'heading $1$2$3');
+                (m, d1, d2, side) => `runway ${d1}${d2}${side ? ' ' + side : ''}`)
+            .replace(/\bheading\s+(\d)\s+(\d)\s+(\d)\b/gi, 'heading $1$2$3')
+            // Fix "hold short" / "whole short" common mishear
+            .replace(/\bwhole\s+short\b/gi, 'hold short')
+            .replace(/\bhold\s+shirt\b/gi, 'hold short')
+            // Fix "taxi" mishears
+            .replace(/\btaxi\s+too\b/gi, 'taxi to')
+            .replace(/\btaxiway\s+alpha\b/gi, 'taxiway Alpha')
+            // Fix "maintain" mishears
+            .replace(/\bmen\s+tain\b/gi, 'maintain')
+            .replace(/\bcontain\b/gi, 'maintain')
+            // Fix word splitting
+            .replace(/\brun\s+way\b/gi, 'runway')
+            .replace(/\bclear\s+ants\b/gi, 'clearance')
+            .replace(/\bdep\s+archer\b/gi, 'departure')
+            .replace(/\ba\s+pro\s+ch\b/gi, 'approach');
 
         return corrected;
     }

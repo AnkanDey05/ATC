@@ -116,7 +116,10 @@ class TtsProvider {
             } else {
                 const provider = this.getFreeProvider();
                 const region = this.config.voiceRegion || 'us';
-                audioBuffer = await provider.synthesize(cleanText, voiceConfig.edgeVoice, region);
+                // Pass rate and pitch from station voice config for distinctiveness
+                const rate = voiceConfig.rate || '+0%';
+                const pitch = voiceConfig.pitch || '+0Hz';
+                audioBuffer = await provider.synthesize(cleanText, voiceConfig.edgeVoice, region, rate, pitch);
             }
 
             // Cache common short phrases
